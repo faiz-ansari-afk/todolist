@@ -1,3 +1,4 @@
+require('dotenv').config()
 const express = require("express");
 const mongoose = require("mongoose");
 const app = express();
@@ -7,13 +8,15 @@ app.set("view engine", "ejs");
 app.use(express.urlencoded({ extended: true,useUnifiedTopology: true }));
 app.use(express.static("public"));
 // connecting to mongodb
-// mongodb+srv://admin:admin@cluster0.vmdiy.mongodb.net/myFirstDatabase?retryWrites=true&w=majority
-mongoose.connect("mongodb+srv://admin:admin@cluster0.vmdiy.mongodb.net/todolistDB", {
+// mongoose.connect("mongodb+srv://process.env.USERNAME:process.env.PASSWORD@cluster0.vmdiy.mongodb.net/todolistDB", 
+mongoose.connect("mongodb://localhost:27017/todolistDB",
+{
   useNewUrlParser: true,
+  useUnifiedTopology: true
 });
 // items collection ka schema banaya hai idhar.....eg: item collection me ek field name ki hogi jiski value string me hogi
 const listItemSchema = {
-  name: String
+  name: String 
 };
 // Item is a collection......yaha pe Item likha hai singular me ...mongoose usko convert karega plurals me eg: Item ---> items
 const Item = mongoose.model("Item", listItemSchema);
@@ -29,7 +32,10 @@ const task3 = new Item({
 });
 const defaultItems = [task1, task2, task3];
 const listSchema = {
-  name : String,
+  name : {
+    type:String,
+    unique:true
+  },
   items: [listItemSchema]
 }
 const List = mongoose.model("List",listSchema);
@@ -55,22 +61,39 @@ app.get("/", (req, res) => {
   })
 });
 app.get("/:customListName",(req,res)=>{
+  if(req.params.customListName === "favicon.ico"){
+    return
+  }
+  
   const customListName = _.capitalize(req.params.customListName);
+  
   List.findOne({name: customListName},(err,foundList)=>{
     if(!err){
       if(!foundList){
-          // console.log(" doesnt exist")
           // create a new list
           const list = new List({
             name: customListName,
-            item:defaultItems
+            items:defaultItems
           });
-          list.save();
-          res.redirect("/" + customListName)
+          list.save((err)=>{
+            if(err){
+              console.log(err)
+            }
+            else{
+              res.redirect("/" + customListName)
+            }
+          });
       }
       else{
-        // something goes missing here
-        res.render("list",{ listTitle: foundList.name , newListItems: foundList.items})
+        if(foundList.items.length === 0){
+        List.findOneAndUpdate({name:customListName},{items:defaultItems},{new:true},(err,foundList)=>{
+          res.render("list",{ listTitle: foundList.name , newListItems: foundList.items})
+        })
+        }
+        else{
+          res.render("list",{ listTitle: foundList.name , newListItems: foundList.items})
+        }
+        
       }
   }
 })
@@ -101,6 +124,7 @@ app.get("/about", (req, res) => {
   res.render("about");
 });
 app.post("/delete",(req,res)=>{
+  console.log(req.body)
   const deleteItemID = req.body.delete;
   const listName = req.body.listName;
   if(listName === "Today"){
@@ -114,7 +138,7 @@ app.post("/delete",(req,res)=>{
       
     })
   }else{
-     Item.findOneAndUpdate({name:listName}, {$pull:{items: {_id : deleteItemID} }} , (err,foundList)=>{
+     List.findOneAndUpdate({name:listName}, {$pull:{items: {_id : deleteItemID} }} , (err,foundList)=>{
        if(!err){
          res.redirect("/"+listName);
        }
